@@ -48,7 +48,7 @@ def exportar_excel(datos):
 st.set_page_config(page_title="Control de Gastos", layout="centered")
 st.title("💰 Control de Gastos")
 
-menu = st.sidebar.radio("Navegación", ["Registrar", "Resumen", "Exportar"])
+menu = st.sidebar.radio("Navegación", ["Registrar", "Resumen", "Editar / Eliminar", "Exportar"])
 
 if menu == "Registrar":
     st.subheader("Agregar ingreso o gasto")
@@ -108,6 +108,41 @@ elif menu == "Resumen":
             st.pyplot(fig)
         else:
             st.info("No hay registros en ese periodo.")
+
+elif menu == "Editar / Eliminar":
+    st.subheader("Editar o eliminar registros")
+    datos = cargar_datos()
+
+    if datos:
+        df = pd.DataFrame(datos)
+        df['index'] = df.index
+        seleccion = st.selectbox("Selecciona un registro", df.apply(lambda x: f"{x['tipo']} - {x['descripcion']} (${x['monto']}) [{x['fecha']}]", axis=1))
+        idx = df[df.apply(lambda x: f"{x['tipo']} - {x['descripcion']} (${x['monto']}) [{x['fecha']}]", axis=1) == seleccion]['index'].values[0]
+
+        registro = datos[idx]
+        nuevo_tipo = st.selectbox("Tipo", ["ingreso", "gasto"], index=["ingreso", "gasto"].index(registro['tipo']))
+        nuevo_monto = st.number_input("Monto", min_value=0.01, value=float(registro['monto']), format="%.2f")
+        nueva_descripcion = st.text_input("Descripción", value=registro['descripcion'])
+        nueva_fecha = st.date_input("Fecha", value=datetime.strptime(registro['fecha'], "%Y-%m-%d"))
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Guardar cambios"):
+                datos[idx] = {
+                    "tipo": nuevo_tipo,
+                    "monto": nuevo_monto,
+                    "descripcion": nueva_descripcion,
+                    "fecha": nueva_fecha.strftime("%Y-%m-%d")
+                }
+                guardar_datos(datos)
+                st.success("Registro actualizado.")
+        with col2:
+            if st.button("Eliminar registro"):
+                datos.pop(idx)
+                guardar_datos(datos)
+                st.warning("Registro eliminado.")
+    else:
+        st.info("No hay registros para editar o eliminar.")
 
 elif menu == "Exportar":
     st.subheader("Exportar datos a Excel")
