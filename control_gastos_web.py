@@ -4,10 +4,11 @@ import os
 from datetime import datetime, timedelta
 import pandas as pd
 import plotly.graph_objects as go
+from openpyxl import Workbook
+from io import BytesIO
 
 DATA_FILE = "finanzas.json"
 
-# ---------- Funciones de datos ----------
 def cargar_datos():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, 'r') as file:
@@ -32,7 +33,19 @@ def filtrar_por_rango(inicio, fin):
     datos = cargar_datos()
     return [r for r in datos if inicio <= datetime.strptime(r['fecha'], "%Y-%m-%d") <= fin]
 
-# ---------- Estilos personalizados ----------
+def exportar_a_excel(data):
+    output = BytesIO()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Finanzas"
+
+    ws.append(["Tipo", "Monto", "Descripción", "Fecha"])
+    for r in data:
+        ws.append([r["tipo"], r["monto"], r["descripcion"], r["fecha"]])
+    wb.save(output)
+    return output.getvalue()
+
+# Estilos
 st.set_page_config(page_title="Panel de Finanzas", layout="wide")
 st.markdown("""
     <style>
@@ -52,16 +65,12 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ---------- Encabezado ----------
 st.title("💸 Panel de Control Financiero")
 
-# ---------- Navegación ----------
 menu = st.sidebar.radio("Ir a", ["➕ Registrar", "📈 Resumen", "🛠 Editar / Eliminar"])
 
-# ---------- Registrar ingresos/gastos ----------
 if menu == "➕ Registrar":
     st.header("Registrar Ingreso o Gasto")
-
     col1, col2 = st.columns(2)
     with col1:
         tipo = st.selectbox("Tipo de registro", ["ingreso", "gasto"])
@@ -77,7 +86,6 @@ if menu == "➕ Registrar":
             agregar_registro(tipo, monto, descripcion, fecha.strftime("%Y-%m-%d"))
             st.success(f"{tipo.capitalize()} guardado correctamente.")
 
-# ---------- Resumen ----------
 elif menu == "📈 Resumen":
     st.header("Resumen Financiero")
 
@@ -122,13 +130,20 @@ elif menu == "📈 Resumen":
         ])
         fig.update_layout(title="Comparativa de Ingresos vs Gastos", barmode='group')
         st.plotly_chart(fig, use_container_width=True)
+
+        # Exportar a Excel
+        excel_bytes = exportar_a_excel(registros)
+        st.download_button(
+            label="⬇️ Exportar a Excel",
+            data=excel_bytes,
+            file_name=f"finanzas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
     else:
         st.info("No hay registros en ese periodo.")
 
-# ---------- Editar / Eliminar ----------
 elif menu == "🛠 Editar / Eliminar":
     st.header("Editar o Eliminar Registros")
-
     datos = cargar_datos()
     if datos:
         df = pd.DataFrame(datos)
