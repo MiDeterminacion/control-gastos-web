@@ -1,179 +1,337 @@
-import streamlit as st
-import json
-import os
-from datetime import datetime, timedelta
-import pandas as pd
-import plotly.graph_objects as go
-from openpyxl import Workbook
-from io import BytesIO
-
-DATA_FILE = "finanzas.json"
-
-def cargar_datos():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'r') as file:
-            return json.load(file)
-    return []
-
-def guardar_datos(data):
-    with open(DATA_FILE, 'w') as file:
-        json.dump(data, file, indent=4)
-
-def agregar_registro(tipo, monto, descripcion, fecha):
-    datos = cargar_datos()
-    datos.append({
-        "tipo": tipo,
-        "monto": monto,
-        "descripcion": descripcion,
-        "fecha": fecha
-    })
-    guardar_datos(datos)
-
-def filtrar_por_rango(inicio, fin):
-    datos = cargar_datos()
-    return [r for r in datos if inicio <= datetime.strptime(r['fecha'], "%Y-%m-%d") <= fin]
-
-def exportar_a_excel(data):
-    output = BytesIO()
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Finanzas"
-
-    ws.append(["Tipo", "Monto", "Descripción", "Fecha"])
-    for r in data:
-        ws.append([r["tipo"], r["monto"], r["descripcion"], r["fecha"]])
-    wb.save(output)
-    return output.getvalue()
-
-# Estilos
-st.set_page_config(page_title="Panel de Finanzas", layout="wide")
-st.markdown("""
-    <style>
-    .main {
-        background-color: #F5F7FA;
-    }
-    .metric {
-        font-size: 24px !important;
-        font-weight: bold;
-    }
-    .stButton>button {
-        background-color: #4CAF50;
-        color: white;
-        border-radius: 10px;
-        height: 40px;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-st.title("💸 Panel de Control Financiero")
-
-menu = st.sidebar.radio("Ir a", ["➕ Registrar", "📈 Resumen", "🛠 Editar / Eliminar"])
-
-if menu == "➕ Registrar":
-    st.header("Registrar Ingreso o Gasto")
-    col1, col2 = st.columns(2)
-    with col1:
-        tipo = st.selectbox("Tipo de registro", ["ingreso", "gasto"])
-        monto = st.number_input("Monto", min_value=0.01, format="%.2f")
-    with col2:
-        descripcion = st.text_input("Descripción")
-        fecha = st.date_input("Fecha", value=datetime.today())
-
-    if st.button("Guardar registro"):
-        if descripcion.strip() == "":
-            st.warning("La descripción no puede estar vacía.")
-        else:
-            agregar_registro(tipo, monto, descripcion, fecha.strftime("%Y-%m-%d"))
-            st.success(f"{tipo.capitalize()} guardado correctamente.")
-
-elif menu == "📈 Resumen":
-    st.header("Resumen Financiero")
-
-    opciones = {
-        "Hoy": (datetime.today(), datetime.today()),
-        "Últimos 7 días": (datetime.today() - timedelta(days=7), datetime.today()),
-        "Últimos 30 días": (datetime.today() - timedelta(days=30), datetime.today()),
-        "Rango personalizado": None
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Panel de Finanzas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    :root {
+      --verde: green;
+      --rojo: red;
+      --gris: #f4f4f4;
+      --oscuro: #263238;
     }
 
-    periodo = st.selectbox("Seleccionar periodo", list(opciones.keys()))
-    if periodo == "Rango personalizado":
-        col1, col2 = st.columns(2)
-        with col1:
-            inicio = st.date_input("Desde", value=datetime.today() - timedelta(days=7))
-        with col2:
-            fin = st.date_input("Hasta", value=datetime.today())
-    else:
-        inicio, fin = opciones[periodo]
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: var(--gris);
+      margin: 0;
+      padding: 0;
+    }
 
-    registros = filtrar_por_rango(
-        datetime.combine(inicio, datetime.min.time()),
-        datetime.combine(fin, datetime.max.time())
-    )
+    .container {
+      max-width: 1000px;
+      margin: 40px auto;
+      background-color: white;
+      padding: 30px;
+      border-radius: 20px;
+      box-shadow: 0 15px 25px rgba(0,0,0,0.1);
+    }
 
-    if registros:
-        ingresos = sum(r["monto"] for r in registros if r["tipo"] == "ingreso")
-        gastos = sum(r["monto"] for r in registros if r["tipo"] == "gasto")
-        balance = ingresos - gastos
+    h1, h2 {
+      color: var(--oscuro);
+      text-align: center;
+    }
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Ingresos", f"${ingresos:,.2f}")
-        col2.metric("Gastos", f"${gastos:,.2f}")
-        col3.metric("Balance", f"${balance:,.2f}")
+    .input-group {
+      margin-bottom: 20px;
+    }
 
-        df = pd.DataFrame(registros)
-        st.dataframe(df)
+    label {
+      font-weight: bold;
+      color: #555;
+    }
 
-        fig = go.Figure(data=[
-            go.Bar(name='Ingresos', x=["Ingresos"], y=[ingresos], marker_color='green'),
-            go.Bar(name='Gastos', x=["Gastos"], y=[gastos], marker_color='red')
-        ])
-        fig.update_layout(title="Comparativa de Ingresos vs Gastos", barmode='group')
-        st.plotly_chart(fig, use_container_width=True)
+    input, select {
+      width: 100%;
+      padding: 12px;
+      margin-top: 5px;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      font-size: 15px;
+    }
 
-        # Exportar a Excel
-        excel_bytes = exportar_a_excel(registros)
-        st.download_button(
-            label="⬇️ Exportar a Excel",
-            data=excel_bytes,
-            file_name=f"finanzas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    else:
-        st.info("No hay registros en ese periodo.")
+    button {
+      background: var(--verde);
+      color: white;
+      border: none;
+      padding: 12px 25px;
+      font-size: 15px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
 
-elif menu == "🛠 Editar / Eliminar":
-    st.header("Editar o Eliminar Registros")
-    datos = cargar_datos()
-    if datos:
-        df = pd.DataFrame(datos)
-        df["id"] = df.index
-        seleccion = st.selectbox("Selecciona un registro", df.apply(
-            lambda r: f"{r['tipo']} - {r['descripcion']} (${r['monto']}) [{r['fecha']}]", axis=1))
-        idx = df[df.apply(
-            lambda r: f"{r['tipo']} - {r['descripcion']} (${r['monto']}) [{r['fecha']}]", axis=1) == seleccion]['id'].values[0]
+    button:hover {
+      background: green;
+    }
 
-        r = datos[idx]
-        tipo = st.selectbox("Tipo", ["ingreso", "gasto"], index=["ingreso", "gasto"].index(r["tipo"]))
-        monto = st.number_input("Monto", min_value=0.01, value=float(r["monto"]), format="%.2f")
-        descripcion = st.text_input("Descripción", value=r["descripcion"])
-        fecha = st.date_input("Fecha", value=datetime.strptime(r["fecha"], "%Y-%m-%d"))
+    .acciones button {
+      padding: 6px 15px;
+      margin-right: 5px;
+      font-size: 13px;
+    }
 
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Guardar cambios"):
-                datos[idx] = {
-                    "tipo": tipo,
-                    "monto": monto,
-                    "descripcion": descripcion,
-                    "fecha": fecha.strftime("%Y-%m-%d")
-                }
-                guardar_datos(datos)
-                st.success("Registro actualizado.")
-        with col2:
-            if st.button("Eliminar registro"):
-                datos.pop(idx)
-                guardar_datos(datos)
-                st.warning("Registro eliminado.")
-    else:
-        st.info("No hay registros disponibles.")
+    .acciones .eliminar {
+      background: var(--rojo);
+    }
+
+    .acciones .eliminar:hover {
+      background: red;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 30px;
+      font-size: 15px;
+    }
+
+    th, td {
+      padding: 12px;
+      border-bottom: 1px solid #ddd;
+      text-align: left;
+    }
+
+    th {
+      background-color: #eee;
+    }
+
+    #resumen {
+      display: flex;
+      justify-content: space-around;
+      margin-top: 30px;
+      text-align: center;
+    }
+
+    #resumen p {
+      font-size: 18px;
+      font-weight: bold;
+      color: #333;
+    }
+
+    #grafico {
+      margin-top: 30px;
+    }
+
+    @media (max-width: 768px) {
+      #resumen {
+        flex-direction: column;
+        gap: 15px;
+      }
+
+      .acciones {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .acciones button {
+        margin-bottom: 5px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>💸 Panel de Finanzas</h1>
+
+    <h2 id="form-title">Registrar Ingreso o Gasto</h2>
+    <div class="input-group">
+      <label for="tipo">Tipo</label>
+      <select id="tipo">
+        <option value="ingreso">Ingreso</option>
+        <option value="gasto">Gasto</option>
+      </select>
+    </div>
+    <div class="input-group">
+      <label for="monto">Monto</label>
+      <input type="number" id="monto" min="0.01" step="0.01">
+    </div>
+    <div class="input-group">
+      <label for="descripcion">Descripción</label>
+      <input type="text" id="descripcion">
+    </div>
+    <div class="input-group">
+      <label for="fecha">Fecha</label>
+      <input type="date" id="fecha">
+    </div>
+    <button onclick="guardarRegistro()" id="btn-guardar">Guardar registro</button>
+
+    <h2>Resumen</h2>
+    <div class="input-group">
+      <label for="rango">Filtrar por</label>
+      <select id="rango" onchange="mostrarResumen()">
+        <option value="hoy">Hoy</option>
+        <option value="7">Últimos 7 días</option>
+        <option value="30">Últimos 30 días</option>
+        <option value="todos">Todos</option>
+      </select>
+    </div>
+
+    <div id="resumen">
+      <p>Ingresos: $<span id="ingresos">0.00</span></p>
+      <p>Gastos: $<span id="gastos">0.00</span></p>
+      <p>Balance: $<span id="balance">0.00</span></p>
+    </div>
+
+    <div id="alerta-equilibrio" style="display:none; text-align:center; margin-top:20px; font-weight:bold; color:#00796b; background:#b2dfdb; padding:15px; border-radius:10px;">
+  ⚖️ ¡Tus ingresos y gastos están equilibrados!
+     </div>
+
+    <table id="tabla">
+      <thead>
+        <tr><th>Tipo</th><th>Monto</th><th>Descripción</th><th>Fecha</th><th>Acciones</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <canvas id="grafico" height="100"></canvas>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    let editIndex = -1;
+
+    function getRegistros() {
+      return JSON.parse(localStorage.getItem("finanzas")) || [];
+    }
+
+    function guardarRegistros(data) {
+      localStorage.setItem("finanzas", JSON.stringify(data));
+    }
+
+    function guardarRegistro() {
+      const tipo = document.getElementById("tipo").value;
+      const monto = parseFloat(document.getElementById("monto").value);
+      const descripcion = document.getElementById("descripcion").value.trim();
+      const fecha = document.getElementById("fecha").value;
+
+      if (!descripcion || !fecha || isNaN(monto)) {
+        alert("Completa todos los campos correctamente.");
+        return;
+      }
+
+      let registros = getRegistros();
+
+      if (editIndex >= 0) {
+        registros[editIndex] = { tipo, monto, descripcion, fecha };
+        editIndex = -1;
+        document.getElementById("form-title").textContent = "Registrar Ingreso o Gasto";
+        document.getElementById("btn-guardar").textContent = "Guardar registro";
+      } else {
+        registros.push({ tipo, monto, descripcion, fecha });
+      }
+
+      guardarRegistros(registros);
+      limpiarFormulario();
+      mostrarResumen();
+    }
+
+    function limpiarFormulario() {
+      document.getElementById("tipo").value = "ingreso";
+      document.getElementById("monto").value = "";
+      document.getElementById("descripcion").value = "";
+      document.getElementById("fecha").value = new Date().toISOString().split("T")[0];
+    }
+
+    function editarRegistro(index) {
+      const registros = getRegistros();
+      const r = registros[index];
+      document.getElementById("tipo").value = r.tipo;
+      document.getElementById("monto").value = r.monto;
+      document.getElementById("descripcion").value = r.descripcion;
+      document.getElementById("fecha").value = r.fecha;
+      document.getElementById("form-title").textContent = "Editar Registro";
+      document.getElementById("btn-guardar").textContent = "Guardar cambios";
+      editIndex = index;
+    }
+
+    function eliminarRegistro(index) {
+      if (!confirm("¿Estás seguro de eliminar este registro?")) return;
+      let registros = getRegistros();
+      registros.splice(index, 1);
+      guardarRegistros(registros);
+      mostrarResumen();
+    }
+
+    function mostrarResumen() {
+      const rango = document.getElementById("rango").value;
+      const hoy = new Date();
+      let inicio;
+
+      if (rango === "hoy") {
+        inicio = new Date(hoy.toISOString().split("T")[0]);
+      } else if (rango === "7" || rango === "30") {
+        inicio = new Date();
+        inicio.setDate(hoy.getDate() - parseInt(rango));
+      } else {
+        inicio = new Date("1970-01-01");
+      }
+
+      const registros = getRegistros();
+      const filtrados = registros.filter(r => new Date(r.fecha) >= inicio);
+
+      let ingresos = 0, gastos = 0;
+      const tbody = document.querySelector("#tabla tbody");
+      tbody.innerHTML = "";
+
+      filtrados.forEach((r, i) => {
+        if (r.tipo === "ingreso") ingresos += r.monto;
+        else gastos += r.monto;
+
+        const fila = `<tr>
+          <td>${r.tipo}</td>
+          <td>$${r.monto.toFixed(2)}</td>
+          <td>${r.descripcion}</td>
+          <td>${r.fecha}</td>
+          <td class="acciones">
+            <button onclick="editarRegistro(${i})">Editar</button>
+            <button class="eliminar" onclick="eliminarRegistro(${i})">Eliminar</button>
+          </td>
+        </tr>`;
+        tbody.innerHTML += fila;
+      });
+
+      document.getElementById("ingresos").textContent = ingresos.toFixed(2);
+      document.getElementById("gastos").textContent = gastos.toFixed(2);
+      document.getElementById("balance").textContent = (ingresos - gastos).toFixed(2);
+      const alerta = document.getElementById("alerta-equilibrio");
+        if (Math.abs(ingresos - gastos) < 0.01) {
+        alerta.style.display = "block";
+        } else {
+        alerta.style.display = "none";
+        }
+
+      mostrarGrafico(ingresos, gastos);
+    }
+
+    function mostrarGrafico(ingresos, gastos) {
+      const ctx = document.getElementById("grafico").getContext("2d");
+      if (window.miGrafico) window.miGrafico.destroy();
+
+      window.miGrafico = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: ["Ingresos", "Gastos"],
+          datasets: [{
+            label: "Resumen",
+            data: [ingresos, gastos],
+            backgroundColor: ["green", "red"]
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false }
+          }
+        }
+      });
+    }
+
+    window.onload = () => {
+      document.getElementById("fecha").value = new Date().toISOString().split("T")[0];
+      mostrarResumen();
+    };
+  </script>
+</body>
+</html>
